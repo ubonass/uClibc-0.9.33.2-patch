@@ -1,67 +1,43 @@
-From 8fc83b7f3fd7425aa4e96c870a7d46df1d81c16c Mon Sep 17 00:00:00 2001
-From: Bernhard Reutner-Fischer <rep.dot.nop@gmail.com>
-Date: Tue, 17 Apr 2012 09:30:15 +0200
-Subject: [PATCH] libc: add posix_fallocate()
-
-Signed-off-by: Bernhard Reutner-Fischer <rep.dot.nop@gmail.com>
----
- include/fcntl.h                                  |    4 +-
- libc/sysdeps/linux/common/Makefile.in            |    3 +-
- libc/sysdeps/linux/common/bits/kernel-features.h |    8 ++
- libc/sysdeps/linux/common/posix_fallocate.c      |   43 ++++++++
- libc/sysdeps/linux/common/posix_fallocate64.c    |   39 +++++++
- test/.gitignore                                  |    2 +
- test/unistd/Makefile.in                          |    5 +-
- test/unistd/tst-posix_fallocate.c                |  127 ++++++++++++++++++++++
- test/unistd/tst-posix_fallocate64.c              |    2 +
- 9 files changed, 228 insertions(+), 5 deletions(-)
- create mode 100644 libc/sysdeps/linux/common/posix_fallocate.c
- create mode 100644 libc/sysdeps/linux/common/posix_fallocate64.c
- create mode 100644 test/unistd/tst-posix_fallocate.c
- create mode 100644 test/unistd/tst-posix_fallocate64.c
-
 diff --git a/include/fcntl.h b/include/fcntl.h
-index 26ad1fe..c4a47af 100644
+index 26ad1fe..6a4e13c 100644
 --- a/include/fcntl.h
 +++ b/include/fcntl.h
-@@ -210,9 +210,7 @@ extern int posix_fadvise64 (int __fd, __off64_t __offset, __off64_t __len,
+@@ -210,7 +210,7 @@ extern int posix_fadvise64 (int __fd, __off64_t __offset, __off64_t __len,
  
  #endif
  
 -#if 0 /* && defined __UCLIBC_HAS_ADVANCED_REALTIME__ */
--
--/* FIXME -- uClibc should probably implement these... */
 +#if defined __UCLIBC_HAS_ADVANCED_REALTIME__
  
- /* Reserve storage for the data of the file associated with FD.
+ /* FIXME -- uClibc should probably implement these... */
  
 diff --git a/libc/sysdeps/linux/common/Makefile.in b/libc/sysdeps/linux/common/Makefile.in
-index e9baa47..e4ac4ff 100644
+index 3b5763c..cddcd74 100644
 --- a/libc/sysdeps/linux/common/Makefile.in
 +++ b/libc/sysdeps/linux/common/Makefile.in
-@@ -82,7 +82,8 @@ CSRC-$(UCLIBC_HAS_REALTIME) += clock_getres.c clock_gettime.c clock_settime.c \
+@@ -81,7 +81,8 @@ CSRC-$(UCLIBC_HAS_REALTIME) += clock_getres.c clock_gettime.c clock_settime.c \
  	sched_get_priority_max.c sched_get_priority_min.c sched_getscheduler.c \
  	sched_rr_get_interval.c sched_setparam.c sched_setscheduler.c sigqueue.c
  # clock_getcpuclockid|clock_nanosleep|mq_timedreceive|mq_timedsend|posix_fadvise|posix_fallocate|posix_madvise|posix_memalign|posix_mem_offset|posix_spawnattr_destroy|posix_spawnattr_init|posix_spawnattr_getflags|posix_spawnattr_setflags|posix_spawnattr_getpgroup|posix_spawnattr_setpgroup|posix_spawnattr_getschedparam|posix_spawnattr_setschedparam|posix_spawnattr_getschedpolicy|posix_spawnattr_setschedpolicy|posix_spawnattr_getsigdefault|posix_spawnattr_setsigdefault|posix_spawnattr_getsigmask|posix_spawnattr_setsigmask|posix_spawnattr_init|posix_spawnattr_setflags|posix_spawnattr_setpgroup|posix_spawnattr_setschedparam|posix_spawnattr_setschedpolicy|posix_spawnattr_setsigdefault|posix_spawnattr_setsigmask|posix_spawn_file_actions_addclose|posix_spawn_file_actions_addopen|posix_spawn_file_actions_adddup2|posix_spawn_file_actions_addopen|posix_spawn_file_actions_destroy|posix_spawn_file_actions_init|posix_spawn_file_actions_init|posix_spawn|posix_spawnp|posix_spawnp|posix_typed_mem_get_info|pthread_mutex_timedlock|sem_timedwait
--CSRC-$(UCLIBC_HAS_ADVANCED_REALTIME) += posix_fadvise64.c posix_fadvise.c posix_madvise.c
-+CSRC-$(UCLIBC_HAS_ADVANCED_REALTIME) += posix_fadvise64.c posix_fadvise.c posix_madvise.c \
+-CSRC-$(UCLIBC_HAS_ADVANCED_REALTIME) += posix_fadvise64.c posix_fadvise.c
++CSRC-$(UCLIBC_HAS_ADVANCED_REALTIME) += posix_fadvise64.c posix_fadvise.c \
 +	posix_fallocate.c posix_fallocate64.c
  CSRC-$(UCLIBC_SUSV4_LEGACY) += utime.c
  CSRC-$(UCLIBC_HAS_EPOLL) += epoll.c
  CSRC-$(UCLIBC_HAS_XATTR) += xattr.c
 diff --git a/libc/sysdeps/linux/common/bits/kernel-features.h b/libc/sysdeps/linux/common/bits/kernel-features.h
-index 5665e24..13c7a63 100644
+index 5ea85d2..36d62dc 100644
 --- a/libc/sysdeps/linux/common/bits/kernel-features.h
 +++ b/libc/sysdeps/linux/common/bits/kernel-features.h
-@@ -496,6 +496,14 @@
+@@ -494,6 +494,14 @@
  # define __ASSUME_PRIVATE_FUTEX	1
  #endif
  
-+/* Support for fallocate was added in 2.6.23,
-+   on s390 only after 2.6.23-rc1, on alpha only after 2.6.33-rc1.  */
-+#if __LINUX_KERNEL_VERSION >= 0x020617 \
-+    && (!defined __s390__ || __LINUX_KERNEL_VERSION >= 0x020618) \
-+    && (!defined __alpha__ || __LINUX_KERNEL_VERSION >= 0x020621)
++/* Support for fallocate was added in 2.6.23,   
++	on s390 only after 2.6.23-rc1, on alpha only after 2.6.33-rc1.  */
++#if __LINUX_KERNEL_VERSION >= 0x020617 \    
++	&& (!defined __s390__ || __LINUX_KERNEL_VERSION >= 0x020618) \    
++	&& (!defined __alpha__ || __LINUX_KERNEL_VERSION >= 0x020621)
 +# define __ASSUME_FALLOCATE 1
 +#endif
 +
@@ -70,7 +46,7 @@ index 5665e24..13c7a63 100644
  # define __ASSUME_GETCPU_SYSCALL        1
 diff --git a/libc/sysdeps/linux/common/posix_fallocate.c b/libc/sysdeps/linux/common/posix_fallocate.c
 new file mode 100644
-index 0000000..9aaa6ce
+index 0000000..a30c513
 --- /dev/null
 +++ b/libc/sysdeps/linux/common/posix_fallocate.c
 @@ -0,0 +1,43 @@
@@ -117,9 +93,10 @@ index 0000000..9aaa6ce
 +strong_alias(posix_fallocate,posix_fallocate64)
 +# endif
 +#endif
+\ No newline at end of file
 diff --git a/libc/sysdeps/linux/common/posix_fallocate64.c b/libc/sysdeps/linux/common/posix_fallocate64.c
 new file mode 100644
-index 0000000..818d868
+index 0000000..48c9034
 --- /dev/null
 +++ b/libc/sysdeps/linux/common/posix_fallocate64.c
 @@ -0,0 +1,39 @@
@@ -162,19 +139,7 @@ index 0000000..818d868
 +# error your machine is neither 32 bit or 64 bit ... it must be magical
 +# endif
 +#endif
-diff --git a/test/.gitignore b/test/.gitignore
-index 7234c48..ef152e9 100644
---- a/test/.gitignore
-+++ b/test/.gitignore
-@@ -305,6 +305,8 @@ unistd/getcwd
- unistd/getopt
- unistd/getopt_long
- unistd/tstgetopt
-+unistd/tst-posix_fallocate
-+unistd/tst-posix_fallocate64
- unistd/tst-preadwrite
- unistd/tst-preadwrite64
- unistd/vfork
+\ No newline at end of file
 diff --git a/test/unistd/Makefile.in b/test/unistd/Makefile.in
 index c542f98..24b9a37 100644
 --- a/test/unistd/Makefile.in
@@ -333,5 +298,3 @@ index 0000000..b1ee0ff
 +#define TST_POSIX_FALLOCATE64
 +#include "tst-posix_fallocate.c"
 -- 
-1.7.10.4
-
