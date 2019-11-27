@@ -1,0 +1,147 @@
+diff --git a/include/stdio.h b/include/stdio.h
+index 289b861..70bc714 100644
+--- a/include/stdio.h
++++ b/include/stdio.h
+@@ -860,7 +860,8 @@ extern char *cuserid (char *__s);
+ #endif /* Use X/Open, but not issue 6.  */
+ 
+ 
+-#if 0 /* def	__USE_GNU uClibc note: not supported */
++#if 1 /*defined __USE_GNU && defined __UCLIBC_HAS_OBSTACK__*/
++
+ struct obstack;			/* See <obstack.h>.  */
+ 
+ /* Write formatted output to an obstack.  */
+@@ -871,7 +872,7 @@ extern int obstack_vprintf (struct obstack *__restrict __obstack,
+ 			    __const char *__restrict __format,
+ 			    __gnuc_va_list __args)
+      __THROW __attribute__ ((__format__ (__printf__, 2, 0)));
+-#endif /* Use GNU.  */
++#endif /* USE_GNU && UCLIBC_HAS_OBSTACK.*/
+ 
+ 
+ #if defined __USE_POSIX || defined __USE_MISC
+diff --git a/libc/misc/gnu/Makefile.in b/libc/misc/gnu/Makefile.in
+index 3990e4e..13735bb 100644
+--- a/libc/misc/gnu/Makefile.in
++++ b/libc/misc/gnu/Makefile.in
+@@ -7,13 +7,14 @@
+ 
+ subdirs += libc/misc/gnu
+ 
+-CSRC := obstack.c
++CSRC := obstack.c obprintf.c
+ 
+ MISC_GNU_DIR := $(top_srcdir)libc/misc/gnu
+ MISC_GNU_OUT := $(top_builddir)libc/misc/gnu
+ 
+-MISC_GNU_SRC := $(MISC_GNU_DIR)/obstack.c
+-MISC_GNU_OBJ := $(MISC_GNU_OUT)/obstack.o
++MISC_GNU_SRC := $(MISC_GNU_DIR)/obstack.c $(MISC_GNU_DIR)/obprintf.c
++MISC_GNU_OBJ := $(MISC_GNU_OUT)/obstack.o $(MISC_GNU_OUT)/obprintf.o
++
+ 
+ libc-y += $(MISC_GNU_OBJ)
+ 
+diff --git a/libc/misc/gnu/obprintf.c b/libc/misc/gnu/obprintf.c
+new file mode 100644
+index 0000000..5d3e9e5
+--- /dev/null
++++ b/libc/misc/gnu/obprintf.c
+@@ -0,0 +1,35 @@
++/* Copyright (C) 2013 Gentoo Foundation
++ * Licensed under LGPL v2.1 or later, see the file COPYING.LIB in this tarball.
++ */
++
++#include <stdio.h>
++#include <stdarg.h>
++
++#ifdef _LIBC
++# include <obstack.h>
++#else
++# include "obstack.h"
++#endif
++
++int
++_obstack_vprintf (struct obstack *obstack, const char *format, va_list args)
++{
++  int n;
++  char *s;
++  n = vasprintf(&s, format, args);
++  obstack_grow(obstack, s, n);
++  return n;
++}
++weak_alias (_obstack_vprintf, obstack_vprintf)
++
++int
++_obstack_printf (struct obstack *obstack, const char *format, ...)
++{
++  int n;
++  va_list ap;
++  va_start (ap, format);
++  n = _obstack_vprintf (obstack, format, ap);
++  va_end (ap);
++  return n;
++}
++weak_alias (_obstack_printf, obstack_printf)
+\ No newline at end of file
+diff --git a/test/malloc/tst-obstack.c b/test/malloc/tst-obstack.c
+index 769697f..8d5d320 100644
+--- a/test/malloc/tst-obstack.c
++++ b/test/malloc/tst-obstack.c
+@@ -1,4 +1,5 @@
+ /* Test case by Alexandre Duret-Lutz <duret_g@epita.fr>.  */
++#include <features.h>
+ #include <obstack.h>
+ #include <stdint.h>
+ #include <stdio.h>
+@@ -26,7 +27,7 @@ verbose_free (void *buf)
+ }
+ 
+ int
+-main (void)
++test_obstack_alloc (void)
+ {
+   int result = 0;
+   int align = 2;
+@@ -62,3 +63,39 @@ main (void)
+ 
+   return result;
+ }
++
++int
++test_obstack_printf (void)
++{
++  int result = 0;
++  int n;
++  char *s;
++  struct obstack ob;
++
++  obstack_init (&ob);
++
++  n = obstack_printf (&ob, "%s%d%c", "testing 1 ... 2 ... ", 3, '\n');
++  result |= (n != 22);
++  printf("obstack_printf => %d\n", n);
++
++  n = obstack_printf (&ob, "%s%d%c", "testing 3 ... 2 ... ", 1, '\0');
++  result |= (n != 22);
++  printf("obstack_printf => %d\n", n);
++
++  s = obstack_finish (&ob);
++  printf("obstack_printf => %s\n", s);
++  obstack_free (&ob, NULL);
++
++  return result;
++}
++
++int
++main (void)
++{
++   int result = 0;
++
++   result |= test_obstack_alloc();
++   result |= test_obstack_printf();
++
++   return result;
++}
+\ No newline at end of file
